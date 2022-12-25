@@ -10,18 +10,6 @@ My plan is to redevelop eduterm/2 to use a real text line buffer (in opposition 
 [phoff]: https://www.uninformativ.de/contact.html
 
 ## Documentation from uninformativ.de
-<pre>
-    ___  __| |_   _| |_ ___ _ __ _ __ ___
-   / _ \/ _` | | | | __/ _ \ '__| '_ ` _ \
-  |  __/ (_| | |_| | ||  __/ |  | | | | | |
-   \___|\__,_|\__,_|\__\___|_|  |_| |_| |_|
-</pre>
-
-> <code><a href="https://uninformativ.de/git/eduterm">https://uninformativ.de/git/eduterm</a></code>
-
-*Don't send him bug reports! Instead create an issue [here](https://github.com/TomasKindahl/eduterm2/issues)!*
-
-----
 
 Learning what's going on behind the scenes in X11 terminal emulators.
 
