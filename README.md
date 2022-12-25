@@ -21,6 +21,8 @@ This is for educational purposes.
 The following C libraries are required:
 
 - libx11
+- libx11-dev
+- libx11-doc is useful too
 
 To build the program, run:
 
