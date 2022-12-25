@@ -17,8 +17,9 @@ My plan is to redevelop eduterm/2 to use a real text line buffer (in opposition 
    \___|\__,_|\__,_|\__\___|_|  |_| |_| |_|
 </pre>
 
-> <code><a href="https://uninformativ.de/git/eduterm">https://uninformativ.de/git/eduterm</a></code> (dead link!)<br/>
-> <code><a href="https://uninformativ.de/bugs.html">https://uninformativ.de/bugs.html</a></code>
+> <code><a href="https://uninformativ.de/git/eduterm">https://uninformativ.de/git/eduterm</a></code>
+
+*Don't send him bug reports! Instead create an issue [here](https://github.com/TomasKindahl/eduterm2/issues)!*
 
 ----
 
