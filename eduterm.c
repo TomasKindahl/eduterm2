@@ -20,59 +20,15 @@
  * /bin/dash which does nothing of the sort. */
 #define SHELL "/bin/dash"
 
-struct PTY {
+/*****************************************/
+/*************** CLASS PTY ***************/
+/*****************************************/
+
+typedef struct _PTY_S {
     int master, slave;
-};
+} PTY;
 
-struct X11 {
-    int fd;
-    Display *dpy;
-    int screen;
-    Window root;
-
-    Window termwin;
-    GC termgc;
-    unsigned long col_fg, col_bg;
-    int w, h;
-
-    XFontStruct *xfont;
-    int font_width, font_height;
-
-    char *buf;
-    int buf_w, buf_h;
-    int buf_x, buf_y;
-};
-
-bool term_set_size(struct PTY *pty, struct X11 *x11) {
-    struct winsize ws = {
-        .ws_col = x11->buf_w,
-        .ws_row = x11->buf_h,
-    };
-
-    /* This is the very same ioctl that normal programs use to query the
-     * window size. Normal programs are actually able to do this, too,
-     * but it makes little sense: Setting the size has no effect on the
-     * PTY driver in the kernel (it just keeps a record of it) or the
-     * terminal emulator. IIUC, all that's happening is that subsequent
-     * ioctls will report the new size -- until another ioctl sets a new
-     * size.
-     *
-     * I didn't see any response to ioctls of normal programs in any of
-     * the popular terminals (XTerm, VTE, st). They are not informed by
-     * the kernel when a normal program issues an ioctl like that.
-     *
-     * On the other hand, if we were to issue this ioctl during runtime
-     * and the size actually changed, child programs would get a
-     * SIGWINCH. */
-    if (ioctl(pty->master, TIOCSWINSZ, &ws) == -1) {
-        perror("ioctl(TIOCSWINSZ)");
-        return false;
-    }
-
-    return true;
-}
-
-bool pt_pair(struct PTY *pty) {
+bool pty_pair(PTY *pty) {
     char *slave_name;
 
     /* Opens the PTY master device. This is the file descriptor that
@@ -88,14 +44,13 @@ bool pt_pair(struct PTY *pty) {
     }
 
     /* grantpt() and unlockpt() are housekeeping functions that have to
-     * be called before we can open the slave FD. Refer to the manpages
-     * on what they do. */
-    if (grantpt(pty->master) == -1) {
+     * be called before we can open the slave FD. */
+    if (grantpt(pty->master) == -1) { /* man grantpt */
         perror("grantpt");
         return false;
     }
 
-    if (unlockpt(pty->master) == -1) {
+    if (unlockpt(pty->master) == -1) { /* man unlockpt */
         perror("grantpt");
         return false;
     }
@@ -121,125 +76,7 @@ bool pt_pair(struct PTY *pty) {
     return true;
 }
 
-void x11_key(XKeyEvent *ev, struct PTY *pty) {
-    char buf[32];
-    int i, num;
-    KeySym ksym;
-
-    num = XLookupString(ev, buf, sizeof buf, &ksym, 0);
-    for (i = 0; i < num; i++)
-        write(pty->master, &buf[i], 1);
-}
-
-void x11_redraw(struct X11 *x11) {
-    int x, y;
-    char buf[1];
-
-    XSetForeground(x11->dpy, x11->termgc, x11->col_bg);
-    XFillRectangle(x11->dpy, x11->termwin, x11->termgc, 0, 0, x11->w, x11->h);
-
-    XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
-    for (y = 0; y < x11->buf_h; y++) {
-        for (x = 0; x < x11->buf_w; x++) {
-            buf[0] = x11->buf[y * x11->buf_w + x];
-            if (!iscntrl(buf[0])) {
-                XDrawString(x11->dpy, x11->termwin, x11->termgc,
-                            x * x11->font_width,
-                            y * x11->font_height + x11->xfont->ascent,
-                            buf, 1);
-            }
-        }
-    }
-
-    XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
-    XFillRectangle(x11->dpy, x11->termwin, x11->termgc,
-                   x11->buf_x * x11->font_width,
-                   x11->buf_y * x11->font_height,
-                   x11->font_width, x11->font_height);
-
-    XSync(x11->dpy, False);
-}
-
-bool x11_setup(struct X11 *x11) {
-    Colormap cmap;
-    XColor color;
-    XSetWindowAttributes wa = {
-        .background_pixmap = ParentRelative,
-        .event_mask = KeyPressMask | KeyReleaseMask | ExposureMask,
-    };
-
-    x11->dpy = XOpenDisplay(NULL);
-    if (x11->dpy == NULL) {
-        fprintf(stderr, "Cannot open display\n");
-        return false;
-    }
-
-    x11->screen = DefaultScreen(x11->dpy);
-    x11->root = RootWindow(x11->dpy, x11->screen);
-    x11->fd = ConnectionNumber(x11->dpy);
-
-    x11->xfont = XLoadQueryFont(x11->dpy, "12x24");
-    if (x11->xfont == NULL) {
-        fprintf(stderr, "Could not load font\n");
-        return false;
-    }
-
-    x11->font_width = XTextWidth(x11->xfont, "m", 1);
-    x11->font_height = x11->xfont->ascent + x11->xfont->descent;
-
-    cmap = DefaultColormap(x11->dpy, x11->screen);
-
-    if (!XAllocNamedColor(x11->dpy, cmap, "#000000", &color, &color)) {
-        fprintf(stderr, "Could not load bg color\n");
-        return false;
-    }
-    x11->col_bg = color.pixel;
-
-    if (!XAllocNamedColor(x11->dpy, cmap, "#aaaaaa", &color, &color)) {
-        fprintf(stderr, "Could not load fg color\n");
-        return false;
-    }
-    x11->col_fg = color.pixel;
-
-    /* The terminal will have a fixed size of 80x25 cells. This is an
-     * arbitrary number. No resizing has been implemented and child
-     * processes can't even ask us for the current size (for now).
-     *
-     * buf_x, buf_y will be the current cursor position. */
-    x11->buf_w = 80;
-    x11->buf_h = 25;
-    x11->buf_x = 0;
-    x11->buf_y = 0;
-    x11->buf = calloc(x11->buf_w * x11->buf_h, 1);
-    if (x11->buf == NULL) {
-        perror("calloc");
-        return false;
-    }
-
-    x11->w = x11->buf_w * x11->font_width;
-    x11->h = x11->buf_h * x11->font_height;
-
-    x11->termwin = XCreateWindow(x11->dpy, x11->root,
-                                 0, 0,
-                                 x11->w, x11->h,
-                                 0,
-                                 DefaultDepth(x11->dpy, x11->screen),
-                                 CopyFromParent,
-                                 DefaultVisual(x11->dpy, x11->screen),
-                                 CWBackPixmap | CWEventMask,
-                                 &wa);
-    XStoreName(x11->dpy, x11->termwin, "eduterm");
-    XMapWindow(x11->dpy, x11->termwin);
-    x11->termgc = XCreateGC(x11->dpy, x11->termwin, 0, NULL);
-
-    XSetFont(x11->dpy, x11->termgc, x11->xfont->fid);
-
-    XSync(x11->dpy, False);
-
-    return true;
-}
-
-bool spawn(struct PTY *pty) {
+bool pty_spawn(PTY *pty) {
     pid_t p;
     char *env[] = { "TERM=dumb", NULL };
 
@@ -273,7 +110,196 @@ bool spawn(struct PTY *pty) {
     return false;
 }
 
-int run(struct PTY *pty, struct X11 *x11) {
+/********************************************/
+/*************** CLASS X11win ***************/
+/********************************************/
+
+typedef struct _X11_S {
+    int fd;
+    Display *dpy;
+    int screen;
+    Window root;
+
+    Window termwin;
+    GC termgc;
+    unsigned long col_fg, col_bg, col_txbg;
+    int w, h;
+
+    XFontStruct *xfont;
+    int font_width, font_height;
+
+    char *buf;
+    int buf_w, buf_h;
+    int buf_x, buf_y;
+} X11win;
+
+bool term_set_size(PTY *pty, X11win *x11) {
+    struct winsize ws = { /* struct winsize defined in termios.h */
+        .ws_col = x11->buf_w,
+        .ws_row = x11->buf_h,
+    };
+
+    /* This is the very same ioctl (man ioctl) that normal programs use
+     * to query the window size. Normal programs are actually able to do
+     * this, too, but it makes little sense: Setting the size has no
+     * effect on the PTY driver in the kernel (it just keeps a record of
+     * it) or the terminal emulator. IIUC, all that's happening is that
+     * subsequent ioctls will report the new size -- until another ioctl
+     * sets a new size.
+     *
+     * I didn't see any response to ioctls of normal programs in any of
+     * the popular terminals (XTerm, VTE, st). They are not informed by
+     * the kernel when a normal program issues an ioctl like that.
+     *
+     * On the other hand, if we were to issue this ioctl during runtime
+     * and the size actually changed, child programs would get a
+     * SIGWINCH. (man signal) */
+    if (ioctl(pty->master, TIOCSWINSZ, &ws) == -1) { /* man ioctl_tty */
+        perror("ioctl(TIOCSWINSZ)");
+        return false;
+    }
+
+    return true;
+}
+
+bool x11_setup(X11win *x11) {
+    Colormap cmap;
+    XColor color;
+    XSetWindowAttributes wa = { /* man XCreateWindow */
+        .background_pixmap = ParentRelative,
+        .event_mask = KeyPressMask | KeyReleaseMask | ExposureMask |
+                      ResizeRedirectMask,
+    };
+    
+    printf("x11_setup\n");
+
+    x11->dpy = XOpenDisplay(NULL);
+    if (x11->dpy == NULL) {
+        fprintf(stderr, "Cannot open display\n");
+        return false;
+    }
+
+    x11->screen = DefaultScreen(x11->dpy);
+    x11->root = RootWindow(x11->dpy, x11->screen);
+    x11->fd = ConnectionNumber(x11->dpy);
+
+    printf("x11 { screen = %d, root = %ld, connection = %d}\n",
+    	   x11->screen, x11->root, x11->fd);
+    
+    x11->xfont = XLoadQueryFont(x11->dpy, "12x24"); 
+    if (x11->xfont == NULL) {
+        fprintf(stderr, "Could not load font\n");
+        return false;
+    }
+
+    x11->font_width = XTextWidth(x11->xfont, "m", 1);
+    x11->font_height = x11->xfont->ascent + x11->xfont->descent;
+
+    cmap = DefaultColormap(x11->dpy, x11->screen);
+
+    if (!XAllocNamedColor(x11->dpy, cmap, "#004400", &color, &color)) {
+        fprintf(stderr, "Could not load bg color\n");
+        return false;
+    }
+    x11->col_bg = color.pixel;
+
+    if (!XAllocNamedColor(x11->dpy, cmap, "#FFFFCC", &color, &color)) {
+        fprintf(stderr, "Could not load fg color\n");
+        return false;
+    }
+    x11->col_fg = color.pixel;
+
+    if (!XAllocNamedColor(x11->dpy, cmap, "#FF0000", &color, &color)) {
+        fprintf(stderr, "Could not load txbg color\n");
+        return false;
+    }
+    x11->col_txbg = color.pixel;
+
+    /* The terminal will have a fixed size of 80x25 cells. This is an
+     * arbitrary number. No resizing has been implemented and child
+     * processes can't even ask us for the current size (for now).
+     *
+     * buf_x, buf_y will be the current cursor position. */
+    x11->buf_w = 80;
+    x11->buf_h = 25;
+    x11->buf_x = 0;
+    x11->buf_y = 0;
+    x11->buf = calloc(x11->buf_w * x11->buf_h, 1);
+    if (x11->buf == NULL) {
+        perror("calloc");
+        return false;
+    }
+
+    x11->w = x11->buf_w * x11->font_width;
+    x11->h = x11->buf_h * x11->font_height;
+
+    x11->termwin = XCreateWindow(x11->dpy, x11->root,
+                                 0, 0,
+                                 x11->w, x11->h,
+                                 0,
+                                 DefaultDepth(x11->dpy, x11->screen),
+                                 CopyFromParent,
+                                 DefaultVisual(x11->dpy, x11->screen),
+                                 CWBackPixmap | CWEventMask,
+                                 &wa);
+    XStoreName(x11->dpy, x11->termwin, "eduterm/2 (TomKi)");
+    XMapWindow(x11->dpy, x11->termwin);
+    x11->termgc = XCreateGC(x11->dpy, x11->termwin, 0, NULL);
+
+    XSetFont(x11->dpy, x11->termgc, x11->xfont->fid);
+
+    XSync(x11->dpy, False);
+
+    return true;
+}
+
+void x11_key(XKeyEvent *ev, PTY *pty) {
+    char buf[32];
+    int i, num;
+    KeySym ksym;
+
+    num = XLookupString(ev, buf, sizeof buf, &ksym, 0);
+    for (i = 0; i < num; i++) {
+        write(pty->master, &buf[i], 1);
+    }
+}
+
+void x11_redraw(X11win *x11) {
+    int x, y;
+    char buf[1];
+
+    /* set window area to background color */
+    XSetForeground(x11->dpy, x11->termgc, x11->col_bg);
+    XFillRectangle(x11->dpy, x11->termwin, x11->termgc, 0, 0, x11->w, x11->h);
+
+    XSetBackground(x11->dpy, x11->termgc, x11->col_txbg);
+    XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
+    for (y = 0; y < x11->buf_h; y++) {
+        for (x = 0; x < x11->buf_w; x++) {
+            buf[0] = x11->buf[y * x11->buf_w + x];
+            if (!iscntrl(buf[0])) {
+                XDrawString(x11->dpy, x11->termwin, x11->termgc,
+                            x * x11->font_width,
+                            y * x11->font_height + x11->xfont->ascent,
+                            buf, 1);
+            }
+        }
+    }
+
+    XSetForeground(x11->dpy, x11->termgc, x11->col_fg);
+    XFillRectangle(x11->dpy, x11->termwin, x11->termgc,
+                   x11->buf_x * x11->font_width,
+                   x11->buf_y * x11->font_height,
+                   x11->font_width, x11->font_height);
+
+    XSync(x11->dpy, False);
+}
+
+void x11_resize(X11win *x11, int w, int h) {
+	printf("NYI: x11_resize to w=%d, h=%d\n", w, h);
+}
+
+int run(PTY *pty, X11win *x11) {
     int i, maxfd;
     fd_set readable;
     XEvent ev;
@@ -320,8 +346,9 @@ int run(struct PTY *pty, struct X11 *x11) {
                         x11->buf_y++;
                         just_wrapped = true;
                     }
-                    else
+                    else {
                         just_wrapped = false;
+                    }
                 }
                 else if (!just_wrapped) {
                     /* We read a newline and we did *not* implicitly
@@ -351,8 +378,9 @@ int run(struct PTY *pty, struct X11 *x11) {
                             x11->buf_w * (x11->buf_h - 1));
                     x11->buf_y = x11->buf_h - 1;
 
-                    for (i = 0; i < x11->buf_w; i++)
+                    for (i = 0; i < x11->buf_w; i++) {
                         x11->buf[x11->buf_y * x11->buf_w + i] = 0;
+                    }
                 }
             }
             x11_redraw(x11);
@@ -365,6 +393,12 @@ int run(struct PTY *pty, struct X11 *x11) {
                   case Expose:
                     x11_redraw(x11);
                     break;
+                  case ResizeRequest:
+                  	 {
+                  	     XResizeRequestEvent *rev = (XResizeRequestEvent *)&ev;
+                  	     x11_resize(x11, rev->width, rev->height);
+                  	 }
+                  	 break;
                   case KeyPress:
                     x11_key(&ev.xkey, pty);
                     break;
@@ -377,20 +411,24 @@ int run(struct PTY *pty, struct X11 *x11) {
 }
 
 int main() {
-    struct PTY pty;
-    struct X11 x11;
+    PTY pty;
+    X11win x11;
 
-    if (!x11_setup(&x11))
+    if (!x11_setup(&x11)) {
         return 1;
+    }
 
-    if (!pt_pair(&pty))
+    if (!pty_pair(&pty)) {
         return 1;
+    }
 
-    if (!term_set_size(&pty, &x11))
+    if (!term_set_size(&pty, &x11)) {
         return 1;
+    }
 
-    if (!spawn(&pty))
+    if (!pty_spawn(&pty)) {
         return 1;
+    }
 
     return run(&pty, &x11);
 }
