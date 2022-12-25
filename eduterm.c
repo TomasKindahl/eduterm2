@@ -15,9 +15,9 @@
 #include <X11/Xutil.h>
 
 /* Launching /bin/sh may launch a GNU Bash and that can have nasty side
-* effects. On my system, it clobbers ~/.bash_history because it doesn't
-* respect $HISTSIZE from my ~/.bashrc. That's very annoying. So, launch
-* /bin/dash which does nothing of the sort. */
+ * effects. On my system, it clobbers ~/.bash_history because it doesn't
+ * respect $HISTSIZE from my ~/.bashrc. That's very annoying. So, launch
+ * /bin/dash which does nothing of the sort. */
 #define SHELL "/bin/dash"
 
 struct PTY {
@@ -178,7 +178,7 @@ bool x11_setup(struct X11 *x11) {
     x11->root = RootWindow(x11->dpy, x11->screen);
     x11->fd = ConnectionNumber(x11->dpy);
 
-    x11->xfont = XLoadQueryFont(x11->dpy, "fixed");
+    x11->xfont = XLoadQueryFont(x11->dpy, "12x24");
     if (x11->xfont == NULL) {
         fprintf(stderr, "Could not load font\n");
         return false;
@@ -231,6 +231,8 @@ bool x11_setup(struct X11 *x11) {
     XStoreName(x11->dpy, x11->termwin, "eduterm");
     XMapWindow(x11->dpy, x11->termwin);
     x11->termgc = XCreateGC(x11->dpy, x11->termwin, 0, NULL);
+
+    XSetFont(x11->dpy, x11->termgc, x11->xfont->fid);
 
     XSync(x11->dpy, False);
 
