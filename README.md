@@ -17,7 +17,7 @@ My plan is to redevelop eduterm/2 to use a real text line buffer (in opposition 
    \___|\__,_|\__,_|\__\___|_|  |_| |_| |_|
 </pre>
 
-> <code><a href="https://uninformativ.de/git/eduterm">https://uninformativ.de/git/eduterm</a></code>
+> <code><a href="https://uninformativ.de/git/eduterm">https://uninformativ.de/git/eduterm</a></code><br/>
 > <code><a href="https://uninformativ.de/bugs.html">https://uninformativ.de/bugs.html</a></code>
 
 ----
@@ -35,7 +35,7 @@ The following C libraries are required:
 
 To build the program, run:
 
-    $ make
+    make
 
 You really should read the source code.
 
@@ -43,6 +43,6 @@ You really should read the source code.
 
 Open a new terminal window:
 
-    $ eduterm
+    eduterm
 
 If you use a tiling window manager, make sure that you're in "floating" mode.
